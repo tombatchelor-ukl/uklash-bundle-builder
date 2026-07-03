@@ -5,8 +5,80 @@ import ProductDetail from './components/ProductDetail'
 import BuilderView from './components/BuilderView'
 
 const VIEWS = { BROWSE: 'browse', BUILD: 'build' }
+const SESSION_KEY = 'bb_unlocked'
+const PASSWORD = 'lashlashlash'
+
+function PasswordGate({ onUnlock }) {
+  const [value, setValue] = useState('')
+  const [error, setError] = useState(false)
+
+  const submit = (e) => {
+    e.preventDefault()
+    if (value === PASSWORD) {
+      sessionStorage.setItem(SESSION_KEY, '1')
+      onUnlock()
+    } else {
+      setError(true)
+      setValue('')
+      setTimeout(() => setError(false), 1800)
+    }
+  }
+
+  return (
+    <div className="h-screen flex flex-col items-center justify-center gap-8"
+      style={{ background: '#101820' }}>
+      <div className="flex flex-col items-center gap-1">
+        <span className="select-none" style={{
+          fontFamily: 'Aeonik', fontWeight: 900, color: '#ffffff',
+          fontSize: '28px', letterSpacing: '-0.01em',
+        }}>
+          uklash
+        </span>
+        <span className="text-xs font-medium tracking-widest uppercase"
+          style={{ color: 'rgba(255,255,255,0.3)' }}>
+          Bundle Builder
+        </span>
+      </div>
+
+      <form onSubmit={submit} className="flex flex-col items-center gap-3" style={{ width: '260px' }}>
+        <input
+          type="password"
+          value={value}
+          onChange={e => { setValue(e.target.value); setError(false) }}
+          placeholder="Password"
+          autoFocus
+          className="w-full px-4 py-2.5 rounded-lg text-sm text-center focus:outline-none transition-all"
+          style={{
+            background: 'rgba(255,255,255,0.07)',
+            border: `1px solid ${error ? 'rgba(239,68,68,0.6)' : 'rgba(255,255,255,0.12)'}`,
+            color: '#ffffff',
+          }}
+          onFocus={e => { if (!error) e.target.style.borderColor = 'rgba(255,255,255,0.35)' }}
+          onBlur={e => { if (!error) e.target.style.borderColor = 'rgba(255,255,255,0.12)' }}
+        />
+        {error && (
+          <p className="text-xs" style={{ color: 'rgba(239,68,68,0.8)' }}>Incorrect password</p>
+        )}
+        <button
+          type="submit"
+          className="w-full py-2.5 rounded-lg text-sm font-semibold transition-opacity"
+          style={{ background: '#ffffff', color: '#101820' }}
+          onMouseEnter={e => { e.currentTarget.style.opacity = '0.88' }}
+          onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
+        >
+          Enter
+        </button>
+      </form>
+    </div>
+  )
+}
 
 export default function App() {
+  const [unlocked, setUnlocked] = useState(
+    () => sessionStorage.getItem(SESSION_KEY) === '1'
+  )
+
+  if (!unlocked) return <PasswordGate onUnlock={() => setUnlocked(true)} />
   const [config, setConfig] = useState(null)
   const [view, setView] = useState(VIEWS.BROWSE)
   const [selectedSku, setSelectedSku] = useState(null)

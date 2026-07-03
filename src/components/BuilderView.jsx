@@ -57,7 +57,7 @@ function PickerCard({ product, selectedMarket, markets }) {
         {/* Thumbnail */}
         {skuImages[product.skuUk]
           ? <img src={skuImages[product.skuUk]} alt="" loading="lazy"
-              className="shrink-0 w-10 h-10 rounded-md object-cover"
+              className="shrink-0 w-10 h-14 rounded-md object-contain"
               style={{ background: '#f5f0ed' }} />
           : <div className="shrink-0 w-4 h-4 mt-0.5">
               <svg style={{ color: 'rgba(16,24,32,0.28)' }} fill="currentColor" viewBox="0 0 20 20">
@@ -105,12 +105,13 @@ function CanvasCard({ item, selectedMarket, markets, onRemove }) {
       ref={setNodeRef}
       style={{
         ...style,
+        height: '172px',
         opacity: isDragging ? 0.4 : 1,
         borderColor: isDragging ? 'rgba(16,24,32,0.3)' : 'rgba(16,24,32,0.1)',
         boxShadow: isDragging ? '0 10px 25px rgba(16,24,32,0.15)' : undefined,
         backgroundColor: '#ffffff',
       }}
-      className="relative flex-shrink-0 w-40 h-40 rounded-xl border-2 flex flex-col p-3 select-none transition-shadow"
+      className="relative flex-shrink-0 w-40 rounded-xl border-2 flex flex-col p-3 select-none transition-shadow"
       onMouseEnter={e => {
         if (!isDragging) {
           e.currentTarget.style.borderColor = 'rgba(16,24,32,0.2)'
@@ -160,16 +161,17 @@ function CanvasCard({ item, selectedMarket, markets, onRemove }) {
         {skuImages[item.product.skuUk] ? (
           /* Image-first layout */
           <>
-            <div className="rounded-md overflow-hidden mx-auto" style={{ width: '80px', height: '80px', background: '#f5f0ed' }}>
+            <div className="rounded-md overflow-hidden w-full flex items-center justify-center"
+              style={{ height: '96px', background: '#f5f0ed' }}>
               <img src={skuImages[item.product.skuUk]} alt="" loading="lazy"
-                className="w-full h-full object-cover" />
+                className="w-full h-full object-contain" />
             </div>
             <div>
-              <div className="text-[10px] font-semibold leading-tight line-clamp-2 pr-2 font-serif mt-2" style={{ color: '#101820' }}>
+              <div className="text-[10px] font-semibold leading-tight line-clamp-2 pr-2 font-serif mt-1.5" style={{ color: '#101820' }}>
                 {item.product.nameEn}
               </div>
               {market && price > 0 && (
-                <div className="text-xs font-bold mt-1 font-sans" style={{ color: '#101820' }}>
+                <div className="text-xs font-bold mt-0.5 font-sans" style={{ color: '#101820' }}>
                   {formatPrice(price, market)}
                 </div>
               )}
@@ -236,7 +238,8 @@ function HorizontalCanvas({ items, selectedMarket, markets, onRemove }) {
             ))}
             {/* Ghost drop target at the end */}
             <div
-              className="flex-shrink-0 w-40 h-40 rounded-xl border-2 border-dashed flex items-center justify-center transition-colors"
+              className="flex-shrink-0 w-40 rounded-xl border-2 border-dashed flex items-center justify-center transition-colors"
+              style={{ height: '172px' }}
               style={{
                 borderColor: isOver ? 'rgba(16,24,32,0.3)' : 'rgba(16,24,32,0.12)',
                 backgroundColor: isOver ? 'rgba(16,24,32,0.03)' : 'transparent',
