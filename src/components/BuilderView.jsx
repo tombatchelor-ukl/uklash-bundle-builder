@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
+import skuImages from '../data/skuImages'
 import {
   DndContext, DragOverlay, closestCenter,
   PointerSensor, useSensor, useSensors,
@@ -52,10 +53,18 @@ function PickerCard({ product, selectedMarket, markets }) {
         }
       }}
     >
-      <div className="flex items-start gap-1.5">
-        <svg className="w-3 h-3 mt-0.5 shrink-0" style={{ color: 'rgba(16,24,32,0.28)' }} fill="currentColor" viewBox="0 0 20 20">
-          <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
-        </svg>
+      <div className="flex items-start gap-2">
+        {/* Thumbnail */}
+        {skuImages[product.skuUk]
+          ? <img src={skuImages[product.skuUk]} alt="" loading="lazy"
+              className="shrink-0 w-10 h-10 rounded-md object-cover"
+              style={{ background: '#f5f0ed' }} />
+          : <div className="shrink-0 w-4 h-4 mt-0.5">
+              <svg style={{ color: 'rgba(16,24,32,0.28)' }} fill="currentColor" viewBox="0 0 20 20">
+                <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
+              </svg>
+            </div>
+        }
         <div className="min-w-0">
           <div className="text-xs font-medium leading-tight line-clamp-2 font-sans" style={{ color: '#101820' }}>{product.nameEn}</div>
           <div className="text-xs font-mono mt-0.5" style={{ color: 'rgba(16,24,32,0.45)' }}>{product.skuUk}</div>
@@ -148,18 +157,41 @@ function CanvasCard({ item, selectedMarket, markets, onRemove }) {
 
       {/* Content */}
       <div className="flex flex-col justify-between h-full pt-3">
-        <div>
-          <div className="text-xs font-semibold leading-tight line-clamp-2 mt-1 pr-2 font-serif" style={{ color: '#101820' }}>
-            {item.product.nameEn}
-          </div>
-          <div className="font-mono mt-1 break-all leading-tight" style={{ fontSize: '10px', color: 'rgba(16,24,32,0.45)' }}>
-            {item.product.skuUk}
-          </div>
-        </div>
-        {market && price > 0 && (
-          <div className="text-sm font-bold mt-2 font-sans" style={{ color: '#101820' }}>
-            {formatPrice(price, market)}
-          </div>
+        {skuImages[item.product.skuUk] ? (
+          /* Image-first layout */
+          <>
+            <div className="rounded-md overflow-hidden mx-auto" style={{ width: '80px', height: '80px', background: '#f5f0ed' }}>
+              <img src={skuImages[item.product.skuUk]} alt="" loading="lazy"
+                className="w-full h-full object-cover" />
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold leading-tight line-clamp-2 pr-2 font-serif mt-2" style={{ color: '#101820' }}>
+                {item.product.nameEn}
+              </div>
+              {market && price > 0 && (
+                <div className="text-xs font-bold mt-1 font-sans" style={{ color: '#101820' }}>
+                  {formatPrice(price, market)}
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          /* No-image fallback */
+          <>
+            <div>
+              <div className="text-xs font-semibold leading-tight line-clamp-2 mt-1 pr-2 font-serif" style={{ color: '#101820' }}>
+                {item.product.nameEn}
+              </div>
+              <div className="font-mono mt-1 break-all leading-tight" style={{ fontSize: '10px', color: 'rgba(16,24,32,0.45)' }}>
+                {item.product.skuUk}
+              </div>
+            </div>
+            {market && price > 0 && (
+              <div className="text-sm font-bold mt-2 font-sans" style={{ color: '#101820' }}>
+                {formatPrice(price, market)}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -696,17 +728,19 @@ function DiscountTierBar({ count, discounts }) {
 // ─── Drag overlay mini-card ───────────────────────────────────────────────────
 
 function DragPreview({ product }) {
+  const img = skuImages[product.skuUk]
   return (
     <div
-      className="shadow-2xl rounded-xl w-36 h-36 p-3 flex flex-col justify-between rotate-2"
-      style={{
-        backgroundColor: '#ffffff',
-        border: '2px solid #101820',
-        opacity: 0.95,
-      }}
+      className="relative shadow-2xl rounded-xl w-36 h-36 p-3 flex flex-col justify-between rotate-2 overflow-hidden"
+      style={{ backgroundColor: '#ffffff', border: '2px solid #101820', opacity: 0.95 }}
     >
-      <div className="text-xs font-semibold leading-tight line-clamp-3 font-serif" style={{ color: '#101820' }}>{product.nameEn}</div>
-      <div className="text-xs font-mono truncate" style={{ color: 'rgba(16,24,32,0.45)' }}>{product.skuUk}</div>
+      {img && (
+        <div className="absolute inset-0 rounded-xl overflow-hidden" style={{ zIndex: 0 }}>
+          <img src={img} alt="" className="w-full h-full object-cover opacity-20" />
+        </div>
+      )}
+      <div className="relative z-10 text-xs font-semibold leading-tight line-clamp-3 font-serif" style={{ color: '#101820' }}>{product.nameEn}</div>
+      <div className="relative z-10 text-xs font-mono truncate" style={{ color: 'rgba(16,24,32,0.45)' }}>{product.skuUk}</div>
     </div>
   )
 }

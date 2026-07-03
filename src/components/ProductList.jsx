@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import CategoryTag from './CategoryTag'
 import { searchProducts } from '../utils/search'
+import skuImages from '../data/skuImages'
 
 const FILTERS = [
   { key: 'lash',    label: 'Lash' },
@@ -137,10 +138,11 @@ export default function ProductList({ products, selectedSku, onSelect }) {
 }
 
 function ProductRow({ product, isSelected, onSelect }) {
+  const imgSrc = skuImages[product.skuUk]
   return (
     <button
       onClick={() => onSelect(product.skuUk)}
-      className="w-full text-left px-3 py-2.5 border-b transition-all"
+      className="w-full text-left px-3 py-2 border-b transition-all"
       style={{
         borderColor: 'rgba(255,255,255,0.05)',
         background: isSelected ? 'rgba(255,255,255,0.09)' : 'transparent',
@@ -149,8 +151,21 @@ function ProductRow({ product, isSelected, onSelect }) {
       onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
       onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
+      <div className="flex items-center gap-2.5">
+        {/* Thumbnail */}
+        <div className="shrink-0 w-9 h-9 rounded-md overflow-hidden"
+          style={{ background: 'rgba(255,255,255,0.06)' }}>
+          {imgSrc
+            ? <img src={imgSrc} alt="" className="w-full h-full object-cover" loading="lazy" />
+            : <div className="w-full h-full flex items-center justify-center">
+                <svg className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.2)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+              </div>
+          }
+        </div>
+        {/* Text */}
+        <div className="min-w-0 flex-1">
           <div className="text-xs font-medium truncate leading-tight"
             style={{ color: isSelected ? '#ffffff' : 'rgba(255,255,255,0.82)' }}>
             {product.nameEn}
@@ -160,8 +175,9 @@ function ProductRow({ product, isSelected, onSelect }) {
             {product.skuUk}
           </div>
         </div>
+        {/* Tags */}
         <div className="flex flex-wrap gap-1 justify-end shrink-0">
-          {product.categories.filter(c => c !== 'large').slice(0, 2).map(c => (
+          {product.categories.filter(c => c !== 'large' && c !== 'bundle').slice(0, 1).map(c => (
             <CategoryTag key={c} category={c} size="xs" />
           ))}
         </div>

@@ -1,6 +1,7 @@
 import CategoryTag from './CategoryTag'
 import PriceTable from './PriceTable'
 import { formatPrice } from '../utils/pricing'
+import skuImages from '../data/skuImages'
 
 export default function ProductDetail({ product, productMap, markets, selectedMarket }) {
   if (!product) {
@@ -16,8 +17,23 @@ export default function ProductDetail({ product, productMap, markets, selectedMa
     )
   }
 
+  const imgSrc = skuImages[product.skuUk]
+
   return (
     <div className="h-full overflow-y-auto p-8">
+      {/* Hero image */}
+      {imgSrc && (
+        <div className="mb-6 rounded-2xl overflow-hidden"
+          style={{ background: '#f5f0ed', maxHeight: '220px' }}>
+          <img
+            src={imgSrc}
+            alt={product.nameEn}
+            className="w-full h-full object-contain"
+            style={{ maxHeight: '220px' }}
+            loading="lazy"
+          />
+        </div>
+      )}
       {/* Header */}
       <div className="mb-7">
         <div className="flex items-start justify-between gap-4 mb-2">
