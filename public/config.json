@@ -1,0 +1,16 @@
+{
+  "sheetUrl": "https://docs.google.com/spreadsheets/d/e/2PACX-1vR4c7JU5cvJXQLp7BS1Qoz0qxLAsTaW-c6hSSb6h-5EC3OVx3HIjwv-HX7CJQvMBoX7JtSTRm6hyaWt/pub?output=csv",
+  "bundleDiscounts": {
+    "2": 0.10,
+    "3": 0.15,
+    "4": 0.20
+  },
+  "markets": [
+    { "key": "uk",  "label": "UK",        "symbol": "£", "locale": "en-GB", "currency": "GBP" },
+    { "key": "es",  "label": "Spain",     "symbol": "€", "locale": "es-ES", "currency": "EUR" },
+    { "key": "eu",  "label": "EU",        "symbol": "€", "locale": "de-DE", "currency": "EUR" },
+    { "key": "us",  "label": "US",        "symbol": "$", "locale": "en-US", "currency": "USD" },
+    { "key": "cn",  "label": "China",     "symbol": "¥", "locale": "zh-CN", "currency": "CNY" },
+    { "key": "au",  "label": "Australia", "symbol": "$", "locale": "en-AU", "currency": "AUD" }
+  ]
+}
