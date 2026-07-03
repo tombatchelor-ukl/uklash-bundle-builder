@@ -73,12 +73,7 @@ function PasswordGate({ onUnlock }) {
   )
 }
 
-export default function App() {
-  const [unlocked, setUnlocked] = useState(
-    () => sessionStorage.getItem(SESSION_KEY) === '1'
-  )
-
-  if (!unlocked) return <PasswordGate onUnlock={() => setUnlocked(true)} />
+function AppContent() {
   const [config, setConfig] = useState(null)
   const [view, setView] = useState(VIEWS.BROWSE)
   const [selectedSku, setSelectedSku] = useState(null)
@@ -214,6 +209,14 @@ export default function App() {
       )}
     </div>
   )
+}
+
+export default function App() {
+  const [unlocked, setUnlocked] = useState(
+    () => sessionStorage.getItem(SESSION_KEY) === '1'
+  )
+  if (!unlocked) return <PasswordGate onUnlock={() => setUnlocked(true)} />
+  return <AppContent />
 }
 
 function TabButton({ active, onClick, children }) {
