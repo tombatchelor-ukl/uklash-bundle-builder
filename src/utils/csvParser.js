@@ -2,7 +2,7 @@ import Papa from 'papaparse'
 
 // Build a column-index map from the actual header row (robust against column reordering/addition)
 function buildColMap(headerRow) {
-  const h = headerRow.map(s => (s || '').trim().toLowerCase())
+  const h = headerRow.map(s => (s || '').replace(/\s+/g, ' ').trim().toLowerCase())
   const find = (...terms) => h.findIndex(col => terms.every(t => col.includes(t)))
 
   return {
@@ -92,7 +92,7 @@ export function parseCsvText(text) {
 
   // Preserve the raw header row — used by the export to build correctly-ordered TSV rows
   // even when new columns are added to the sheet in future.
-  const headers = rows[0].map(h => (h || '').trim())
+  const headers = rows[0].map(h => (h || '').replace(/\s+/g, ' ').trim())
 
   const COL = buildColMap(rows[0])
 
