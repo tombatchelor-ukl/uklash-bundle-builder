@@ -79,6 +79,7 @@ function AppContent() {
   const [view, setView] = useState(VIEWS.BROWSE)
   const [selectedSku, setSelectedSku] = useState(null)
   const [selectedMarket, setSelectedMarket] = useState('uk')
+  const [refreshFlash, setRefreshFlash] = useState(null)   // 'ok' | 'fail'
 
   // A failed config leaves useProducts with no sheet URL, so it never starts loading
   // and never stops either. Surface the failure instead of spinning forever.
@@ -104,6 +105,13 @@ function AppContent() {
 
   const selectedProduct = selectedSku ? productMap[selectedSku] : null
   const markets = config?.markets ?? []
+
+  const handleRefresh = async () => {
+    setRefreshFlash(null)
+    const ok = await refresh()
+    setRefreshFlash(ok ? 'ok' : 'fail')
+    setTimeout(() => setRefreshFlash(null), 2600)
+  }
 
   return (
     <div className="flex flex-col h-screen" style={{ background: '#fbf6f3' }}>
@@ -155,25 +163,46 @@ function AppContent() {
         )}
 
         {/* Status + refresh */}
-        <div className="flex items-center gap-2 ml-3">
-          {error && <span className="text-xs text-amber-400">{error}</span>}
-          {lastFetched && !error && (
-            <span className="text-xs text-white/30 font-medium">
-              {lastFetched.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        <div className="flex items-center gap-2.5 ml-3">
+          {error && <span className="text-xs text-amber-400 max-w-[220px] truncate" title={error}>{error}</span>}
+
+          {!error && products.length > 0 && (
+            <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>
+              {products.length} products
+              {lastFetched && ` · ${lastFetched.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
             </span>
           )}
+
+          {/* Transient confirmation — a changed timestamp alone is too easy to miss */}
+          {refreshFlash && (
+            <span
+              className="text-xs font-semibold px-2 py-0.5 rounded-full"
+              style={refreshFlash === 'ok'
+                ? { background: 'rgba(58,122,80,0.22)', color: '#8ede9f' }
+                : { background: 'rgba(180,83,9,0.22)', color: '#fcd34d' }}
+            >
+              {refreshFlash === 'ok' ? 'Products updated' : 'Refresh failed'}
+            </span>
+          )}
+
           <button
-            onClick={refresh}
+            onClick={handleRefresh}
             disabled={loading}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium text-white/40 hover:text-white/70 hover:bg-white/8 transition-all disabled:opacity-30"
-            style={{ '--tw-bg-opacity': 1 }}
-            title="Refresh from Google Sheets"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all disabled:opacity-40"
+            style={{
+              background: 'rgba(255,255,255,0.1)',
+              border: '1px solid rgba(255,255,255,0.14)',
+              color: 'rgba(255,255,255,0.85)',
+            }}
+            onMouseEnter={e => { if (!loading) e.currentTarget.style.background = 'rgba(255,255,255,0.2)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
+            title="Re-read the product sheet without reloading the page"
           >
             <svg className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            Refresh
+            {loading ? 'Refreshing…' : 'Refresh products'}
           </button>
         </div>
       </header>
@@ -210,6 +239,7 @@ function AppContent() {
             <main className="flex-1 overflow-hidden" style={{ background: '#fbf6f3' }}>
               <BuilderView
                 products={products}
+                productMap={productMap}
                 markets={markets}
                 discounts={config?.bundleDiscounts ?? {}}
                 selectedMarket={selectedMarket}

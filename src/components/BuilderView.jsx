@@ -12,11 +12,15 @@ import { CSS } from '@dnd-kit/utilities'
 import CategoryTag from './CategoryTag'
 import PriceTable from './PriceTable'
 import {
-  calcBundlePrices, getDiscountRate, suggestSkuName,
+  calcBundlePrices, getDiscountRate,
   formatPrice, findDuplicateBundle,
 } from '../utils/pricing'
 import { searchProducts } from '../utils/search'
 import { buildExportBlocks } from '../utils/exportRow'
+import {
+  createBundle, bundleSku, bundleIssues, isBundleReady, siblingsOf,
+  buildBundleExportMap, formatBundleDetails,
+} from '../utils/bundles'
 import StatusPill from './StatusPill'
 
 let instanceCounter = 0
@@ -347,38 +351,265 @@ function ProductPicker({ products, selectedMarket, markets }) {
   )
 }
 
-// ─── Bottom summary panel ─────────────────────────────────────────────────────
+// ─── Bundle tab strip ────────────────────────────────────────────────────────
 
-function BundleSummary({ items, markets, discounts, selectedMarket, products, headers }) {
-  const [customName, setCustomName] = useState('')
-  const [nameEdited, setNameEdited] = useState(false)
-  const [bundleEnName, setBundleEnName] = useState('')
-  const [bundleEsName, setBundleEsName] = useState('')
-  const [copiedBlock, setCopiedBlock] = useState(null)
+function BundleTabs({ bundles, activeId, products, onSelect, onAdd, onRemove }) {
+  return (
+    <div className="flex items-center gap-1.5 shrink-0 overflow-x-auto">
+      {bundles.map((b, i) => {
+        const isActive = b.id === activeId
+        const ready    = isBundleReady(b, products, siblingsOf(b, bundles))
+        const label    = b.nameEn.trim() || `Bundle ${i + 1}`
+        const dot      = b.items.length === 0
+          ? 'rgba(16,24,32,0.2)'
+          : ready ? '#3a7a50' : '#b45309'
+
+        return (
+          <div
+            key={b.id}
+            className="group flex items-center shrink-0 rounded-lg transition-all"
+            style={{
+              background: isActive ? '#101820' : 'rgba(16,24,32,0.05)',
+              border: `1px solid ${isActive ? '#101820' : 'rgba(16,24,32,0.1)'}`,
+            }}
+          >
+            <button
+              onClick={() => onSelect(b.id)}
+              className="flex items-center gap-1.5 pl-2.5 pr-2 py-1.5 text-xs font-medium font-sans max-w-[180px]"
+              style={{ color: isActive ? '#ffffff' : 'rgba(16,24,32,0.65)' }}
+              title={label}
+            >
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dot }} />
+              <span className="truncate">{label}</span>
+              <span
+                className="shrink-0 tabular-nums px-1 rounded"
+                style={{
+                  background: isActive ? 'rgba(255,255,255,0.15)' : 'rgba(16,24,32,0.08)',
+                  color: isActive ? 'rgba(255,255,255,0.75)' : 'rgba(16,24,32,0.5)',
+                }}
+              >
+                {b.items.length}
+              </span>
+            </button>
+            {bundles.length > 1 && (
+              <button
+                onClick={() => onRemove(b.id)}
+                className="pr-2 pl-0.5 py-1.5 transition-opacity opacity-40 hover:opacity-100"
+                style={{ color: isActive ? '#ffffff' : 'rgba(16,24,32,0.6)' }}
+                title={`Remove ${label}`}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+        )
+      })}
+
+      <button
+        onClick={onAdd}
+        className="flex items-center gap-1 shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-medium font-sans transition-colors"
+        style={{ border: '1px dashed rgba(16,24,32,0.25)', color: 'rgba(16,24,32,0.55)' }}
+        onMouseEnter={e => { e.currentTarget.style.borderColor = '#101820'; e.currentTarget.style.color = '#101820' }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(16,24,32,0.25)'; e.currentTarget.style.color = 'rgba(16,24,32,0.55)' }}
+      >
+        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+        New bundle
+      </button>
+    </div>
+  )
+}
+
+// ─── Export panel: one bundle or the whole session ───────────────────────────
+
+function ExportPanel({ bundles, products, headers, activeId, selectedMarket, markets, discounts, onSelectBundle }) {
+  const [scope, setScope] = useState('all')          // 'active' | 'all'
+  const [copiedKey, setCopiedKey] = useState(null)
   const [copiedDetails, setCopiedDetails] = useState(false)
   const [copyError, setCopyError] = useState('')
 
-  const suggested = useMemo(() => suggestSkuName(items), [items])
-  const displayName = nameEdited ? customName : suggested
+  const market = markets.find(m => m.key === selectedMarket)
 
+  const evaluated = useMemo(() => bundles.map(b => {
+    const duplicate = findDuplicateBundle(b.items, products)
+    return {
+      bundle: b,
+      sku: bundleSku(b, duplicate),
+      issues: bundleIssues(b, products, siblingsOf(b, bundles)),
+    }
+  }), [bundles, products])
+
+  const inScope = scope === 'all'
+    ? evaluated
+    : evaluated.filter(e => e.bundle.id === activeId)
+
+  const ready   = inScope.filter(e => e.issues.length === 0)
+  const blocked = inScope.filter(e => e.issues.length > 0)
+
+  // Same bundle order across every block, so pasted rows line up.
+  const exportMaps = ready.map(e => buildBundleExportMap(e.bundle, e.sku))
+  const blocks = exportMaps.length
+    ? buildExportBlocks(headers.length ? headers : Object.keys(exportMaps[0]), exportMaps)
+    : []
+
+  const copy = (text, onDone) => {
+    setCopyError('')
+    if (!navigator.clipboard?.writeText) {
+      setCopyError('Clipboard unavailable in this browser')
+      return
+    }
+    navigator.clipboard.writeText(text).then(onDone).catch(err => {
+      setCopyError(`Copy failed — ${err?.message || 'clipboard was blocked'}`)
+    })
+  }
+
+  const copyBlock = (block, key) => copy(block.tsv, () => {
+    setCopiedKey(key)
+    setTimeout(() => setCopiedKey(k => (k === key ? null : k)), 2000)
+  })
+
+  const copyDetails = () => copy(
+    formatBundleDetails(ready.map(e => ({ nameEn: e.bundle.nameEn.trim(), sku: e.sku, items: e.bundle.items }))),
+    () => {
+      setCopiedDetails(true)
+      setTimeout(() => setCopiedDetails(false), 2000)
+    }
+  )
+
+  return (
+    <div className="mt-4 pt-4" style={{ borderTop: '1px solid rgba(16,24,32,0.08)' }}>
+      {/* Scope switch */}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold uppercase tracking-wide font-sans" style={{ color: 'rgba(16,24,32,0.45)' }}>
+          Export
+        </p>
+        <div className="flex items-center gap-0.5 rounded-lg p-0.5" style={{ background: 'rgba(16,24,32,0.06)' }}>
+          {[
+            { key: 'active', label: 'This bundle' },
+            { key: 'all',    label: `All ${bundles.length}` },
+          ].map(opt => (
+            <button
+              key={opt.key}
+              onClick={() => setScope(opt.key)}
+              className="px-2.5 py-1 rounded text-xs font-medium font-sans transition-all"
+              style={scope === opt.key
+                ? { background: '#ffffff', color: '#101820', boxShadow: '0 1px 2px rgba(16,24,32,0.08)' }
+                : { color: 'rgba(16,24,32,0.5)' }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Review list — what's about to be exported, and what isn't */}
+      <div className="rounded-lg mb-3 overflow-hidden" style={{ border: '1px solid rgba(16,24,32,0.1)' }}>
+        {inScope.length === 0 ? (
+          <p className="text-xs px-3 py-2.5 font-sans" style={{ color: 'rgba(16,24,32,0.45)' }}>Nothing selected</p>
+        ) : inScope.map((e, i) => {
+          const ok = e.issues.length === 0
+          const idx = bundles.findIndex(b => b.id === e.bundle.id)
+          const priced = e.bundle.items.length
+            ? calcBundlePrices(e.bundle.items, markets, discounts).find(b => b.market.key === selectedMarket)
+            : null
+          return (
+            <button
+              key={e.bundle.id}
+              onClick={() => onSelectBundle(e.bundle.id)}
+              className="w-full text-left px-3 py-2 flex items-start gap-2 transition-colors"
+              style={{
+                borderTop: i === 0 ? 'none' : '1px solid rgba(16,24,32,0.06)',
+                background: e.bundle.id === activeId ? 'rgba(16,24,32,0.04)' : '#ffffff',
+              }}
+              title="Jump to this bundle"
+            >
+              <span className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5"
+                style={{ background: ok ? '#3a7a50' : '#b45309' }} />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline gap-1.5">
+                  <span className="text-xs font-medium truncate font-sans" style={{ color: '#101820' }}>
+                    {e.bundle.nameEn.trim() || `Bundle ${idx + 1}`}
+                  </span>
+                  <span className="text-[10px] shrink-0 font-sans" style={{ color: 'rgba(16,24,32,0.4)' }}>
+                    {e.bundle.items.length} item{e.bundle.items.length !== 1 ? 's' : ''}
+                  </span>
+                </span>
+                {ok
+                  ? <span className="block text-[10px] font-mono truncate mt-0.5" style={{ color: 'rgba(16,24,32,0.45)' }}>{e.sku}</span>
+                  : <span className="block text-[10px] mt-0.5 font-sans" style={{ color: '#b45309' }}>{e.issues.join(' · ')}</span>
+                }
+              </span>
+              {ok && priced && market && (
+                <span className="text-xs font-semibold shrink-0 tabular-nums font-sans" style={{ color: '#101820' }}>
+                  {formatPrice(priced.discounted, market)}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {blocked.length > 0 && ready.length > 0 && (
+        <p className="text-xs mb-2 font-sans" style={{ color: 'rgba(16,24,32,0.5)' }}>
+          {blocked.length} bundle{blocked.length !== 1 ? 's' : ''} excluded — the copies below
+          {' '}cover the {ready.length} ready {ready.length === 1 ? 'bundle' : 'bundles'} only.
+        </p>
+      )}
+
+      {ready.length === 0 ? (
+        <p className="text-xs font-sans" style={{ color: 'rgba(16,24,32,0.4)' }}>
+          {blocked.length > 0
+            ? `Fix the ${blocked.length === 1 ? 'issue' : 'issues'} above to enable export.`
+            : 'Nothing ready to export yet.'}
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {blocks.length > 1 && (
+            <p className="text-xs font-sans leading-relaxed" style={{ color: 'rgba(16,24,32,0.5)' }}>
+              Paste each block into its own range, {ready.length > 1 ? `${ready.length} rows` : '1 row'} tall.
+              The pricing columns in between are left untouched so their formulas keep working.
+            </p>
+          )}
+
+          {blocks.map(block => (
+            <CopyButton
+              key={block.range}
+              onClick={() => copyBlock(block, block.range)}
+              copied={copiedKey === block.range}
+              label={`Copy ${block.range}${block.rowCount > 1 ? ` · ${block.rowCount} rows` : ''}`}
+              copiedLabel={`Copied — paste into ${block.range.split('–')[0]}`}
+              icon={<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />}
+              primary
+            />
+          ))}
+
+          <CopyButton
+            onClick={copyDetails}
+            copied={copiedDetails}
+            label={`Copy details${ready.length > 1 ? ` · ${ready.length} bundles` : ''}`}
+            copiedLabel="Copied details"
+            icon={<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />}
+          />
+        </div>
+      )}
+
+      {copyError && (
+        <p className="text-xs font-semibold font-sans mt-2" style={{ color: '#b45309' }}>{copyError}</p>
+      )}
+    </div>
+  )
+}
+
+// ─── Bottom summary panel ─────────────────────────────────────────────────────
+
+function BundleSummary({ bundle, bundles, markets, discounts, selectedMarket, products, headers, onChange, onSelectBundle }) {
+  const items = bundle.items
   const count = items.length
   const rate  = getDiscountRate(count, discounts)
   const pct   = Math.round(rate * 100)
-
-  // Emptying the canvas must clear the names too. This component stays mounted when
-  // the canvas empties, so without this the previous bundle's English name silently
-  // carries over onto the next bundle and gets exported under the wrong product.
-  useEffect(() => {
-    if (count === 0) {
-      setBundleEnName('')
-      setBundleEsName('')
-      setCustomName('')
-      setNameEdited(false)
-      setCopiedBlock(null)
-      setCopiedDetails(false)
-      setCopyError('')
-    }
-  }, [count])
 
   const breakdown = useMemo(
     () => calcBundlePrices(items, markets, discounts),
@@ -398,98 +629,22 @@ function BundleSummary({ items, markets, discounts, selectedMarket, products, he
   const market = markets.find(m => m.key === selectedMarket)
   const mBreakdown = breakdown.find(b => b.market.key === selectedMarket)
 
-  // When a duplicate is found, lock the SKU to the existing one
-  const effectiveName = duplicate ? duplicate.skuUk : displayName
-
-  // Copy row is valid when: 2+ items, no duplicate, has an English name
-  const canCopy = count >= 2 && !duplicate && bundleEnName.trim() !== ''
-
-  // Only the columns the app owns. The RRP / Current Price columns are deliberately
-  // absent: they are ARRAYFORMULA-driven in the sheet, and anything listed here ends
-  // up inside a copied block and would overwrite those formulas on paste.
-  const exportMap = useMemo(() => {
-    const componentSkus = items.map(i => i.product.skuUk)
-
-    // Categories: union across all components
-    const isLarge = items.some(i => i.product.categories.includes('large'))
-    const isLash  = items.some(i => i.product.isLash  || i.product.categories.includes('lash'))
-    const isBrow  = items.some(i => i.product.isBrow  || i.product.categories.includes('brow'))
-    const isHair  = items.some(i => i.product.isHair  || i.product.categories.includes('hair'))
-    const isSerum = items.some(i => i.product.isSerum || i.product.categories.includes('serum'))
-
-    const today = new Date()
-    const createdDate = `${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`
-
-    return {
-      'english product name': bundleEnName.trim(),
-      'uk market sku':        effectiveName,
-      'created date':         createdDate,
-      'status':               'Active',
-      'amazon asin':          '',
-      'spanish product name': bundleEsName.trim(),
-      'spanish market sku':   componentSkus.join('---'),
-      'gtin':                 '',
-      'bundle?':              'TRUE',
-      'number of components': String(items.length),
-      'bundle component skus': componentSkus.join(','),
-      'large?':  isLarge ? 'TRUE' : 'FALSE',
-      'lash?':   isLash  ? 'TRUE' : 'FALSE',
-      'brow?':   isBrow  ? 'TRUE' : 'FALSE',
-      'hair?':   isHair  ? 'TRUE' : 'FALSE',
-      'serum?':  isSerum ? 'TRUE' : 'FALSE',
-    }
-  }, [items, bundleEnName, bundleEsName, effectiveName])
-
-  // One payload per contiguous run of app-owned columns, so the formula block
-  // between them is never part of a paste.
-  const exportBlocks = useMemo(
-    () => buildExportBlocks(headers.length ? headers : Object.keys(exportMap), exportMap),
-    [headers, exportMap]
-  )
-
-  const copy = (text, onDone) => {
-    setCopyError('')
-    if (!navigator.clipboard?.writeText) {
-      setCopyError('Clipboard unavailable in this browser')
-      return
-    }
-    navigator.clipboard.writeText(text).then(onDone).catch(err => {
-      setCopyError(`Copy failed — ${err?.message || 'clipboard was blocked'}`)
-    })
-  }
-
-  const handleCopyBlock = (block, idx) => {
-    if (!canCopy) return
-    copy(block.tsv, () => {
-      setCopiedBlock(idx)
-      setTimeout(() => setCopiedBlock(c => (c === idx ? null : c)), 2000)
-    })
-  }
-
-  const handleCopyDetails = () => {
-    if (!canCopy) return
-    const contents = items.map(i => `* ${i.product.nameEn} - ${i.product.skuUk}`).join('\n')
-    const text = `Bundle Name: ${bundleEnName.trim()}\nBundle SKU: ${effectiveName}\nBundle Contents:\n\n${contents}`
-    copy(text, () => {
-      setCopiedDetails(true)
-      setTimeout(() => setCopiedDetails(false), 2000)
-    })
-  }
-
-  if (count === 0) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <p className="text-sm font-sans" style={{ color: 'rgba(16,24,32,0.45)' }}>Add products above to see bundle pricing</p>
-      </div>
-    )
-  }
+  // Locked to the existing product's SKU when this duplicates a sheet row
+  const effectiveName = bundleSku(bundle, duplicate)
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="flex gap-0 h-full">
         {/* Left column: names + SKU + duplicate + component breakdown */}
         <div className="flex-1 min-w-0 p-4 border-r overflow-y-auto" style={{ borderColor: 'rgba(16,24,32,0.08)' }}>
-
+          {count === 0 ? (
+            <div className="h-full flex items-center justify-center">
+              <p className="text-sm font-sans text-center" style={{ color: 'rgba(16,24,32,0.45)' }}>
+                Drag products onto the canvas to build this bundle
+              </p>
+            </div>
+          ) : (
+          <>
           {/* Duplicate warning */}
           {duplicate && (
             <div
@@ -514,8 +669,8 @@ function BundleSummary({ items, markets, discounts, selectedMarket, products, he
             </label>
             <input
               type="text"
-              value={bundleEnName}
-              onChange={e => setBundleEnName(e.target.value)}
+              value={bundle.nameEn}
+              onChange={e => onChange({ nameEn: e.target.value })}
               placeholder="e.g. Lash Growth Serum Duo Pack"
               className="w-full px-3 py-2 text-sm rounded-lg focus:outline-none font-sans"
               style={{ backgroundColor: '#ffffff', color: '#101820', border: '1px solid rgba(16,24,32,0.12)' }}
@@ -529,8 +684,8 @@ function BundleSummary({ items, markets, discounts, selectedMarket, products, he
             <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5 font-sans" style={{ color: 'rgba(16,24,32,0.45)' }}>Spanish Name</label>
             <input
               type="text"
-              value={bundleEsName}
-              onChange={e => setBundleEsName(e.target.value)}
+              value={bundle.nameEs}
+              onChange={e => onChange({ nameEs: e.target.value })}
               placeholder="e.g. Pack Dúo Sérum De Pestañas"
               className="w-full px-3 py-2 text-sm rounded-lg focus:outline-none font-sans"
               style={{ backgroundColor: '#ffffff', color: '#101820', border: '1px solid rgba(16,24,32,0.12)' }}
@@ -546,7 +701,7 @@ function BundleSummary({ items, markets, discounts, selectedMarket, products, he
               <input
                 type="text"
                 value={effectiveName}
-                onChange={e => { if (!duplicate) { setCustomName(e.target.value); setNameEdited(true) } }}
+                onChange={e => { if (!duplicate) onChange({ customSku: e.target.value, skuEdited: true }) }}
                 readOnly={!!duplicate}
                 className="w-full px-3 py-2 text-sm font-mono rounded-lg focus:outline-none pr-14"
                 style={
@@ -558,9 +713,9 @@ function BundleSummary({ items, markets, discounts, selectedMarket, products, he
                 onBlur={e => { if (!duplicate) e.target.style.borderColor = 'rgba(16,24,32,0.12)' }}
                 placeholder="BUNDLE-..."
               />
-              {nameEdited && !duplicate && (
+              {bundle.skuEdited && !duplicate && (
                 <button
-                  onClick={() => { setNameEdited(false); setCustomName('') }}
+                  onClick={() => onChange({ skuEdited: false, customSku: '' })}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-sans transition-colors"
                   style={{ color: 'rgba(16,24,32,0.45)' }}
                   onMouseEnter={e => { e.currentTarget.style.color = '#101820' }}
@@ -570,7 +725,7 @@ function BundleSummary({ items, markets, discounts, selectedMarket, products, he
                 </button>
               )}
             </div>
-            {!nameEdited && !duplicate && (
+            {!bundle.skuEdited && !duplicate && (
               <p className="text-xs mt-1 font-sans" style={{ color: 'rgba(16,24,32,0.45)' }}>Auto-generated · click to edit</p>
             )}
           </div>
@@ -642,87 +797,60 @@ function BundleSummary({ items, markets, discounts, selectedMarket, products, he
               )}
             </div>
           </div>
+          </>
+          )}
         </div>
 
-        {/* Right column: discount tiers + price table + copy buttons */}
-        <div className="shrink-0 p-4 overflow-y-auto flex flex-col" style={{ width: '420px' }}>
-          {/* Items + discount */}
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-semibold font-sans" style={{ color: '#101820' }}>
-              {count} item{count !== 1 ? 's' : ''}
-            </span>
-            {rate > 0 ? (
-              <span
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold font-sans"
-                style={{ backgroundColor: 'rgba(58,122,80,0.1)', color: '#3a7a50' }}
-              >
-                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                </svg>
-                {pct}% off
-              </span>
-            ) : (
-              <span className="text-xs font-sans" style={{ color: 'rgba(16,24,32,0.45)' }}>Add 2+ items for a discount</span>
-            )}
-          </div>
+        {/* Right column: discount tiers + price table + export */}
+        <div className="shrink-0 p-4 overflow-y-auto flex flex-col" style={{ width: '440px' }}>
+          {count > 0 && (
+            <>
+              {/* Items + discount */}
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold font-sans" style={{ color: '#101820' }}>
+                  {count} item{count !== 1 ? 's' : ''}
+                </span>
+                {rate > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold font-sans"
+                    style={{ backgroundColor: 'rgba(58,122,80,0.1)', color: '#3a7a50' }}
+                  >
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                    </svg>
+                    {pct}% off
+                  </span>
+                ) : (
+                  <span className="text-xs font-sans" style={{ color: 'rgba(16,24,32,0.45)' }}>Add 2+ items for a discount</span>
+                )}
+              </div>
 
-          <DiscountTierBar count={count} discounts={discounts} />
+              <DiscountTierBar count={count} discounts={discounts} />
 
-          {/* Price table — all markets */}
-          <div className="mt-4 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-wide mb-2 font-sans" style={{ color: 'rgba(16,24,32,0.45)' }}>All markets</p>
-            <PriceTable
-              markets={markets}
-              prices={totals.total}
-              discountedPrices={rate > 0 ? totals.discounted : undefined}
-              discountRate={rate}
-              breakdown={breakdown}
-            />
-          </div>
+              {/* Price table — all markets */}
+              <div className="mt-4">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-2 font-sans" style={{ color: 'rgba(16,24,32,0.45)' }}>All markets</p>
+                <PriceTable
+                  markets={markets}
+                  prices={totals.total}
+                  discountedPrices={rate > 0 ? totals.discounted : undefined}
+                  discountRate={rate}
+                  breakdown={breakdown}
+                />
+              </div>
+            </>
+          )}
 
-          {/* Export buttons */}
-          <div className="mt-4 pt-4 flex flex-col gap-2" style={{ borderTop: '1px solid rgba(16,24,32,0.08)' }}>
-            {!canCopy && !duplicate && count >= 2 && (
-              <p className="text-xs font-sans" style={{ color: 'rgba(16,24,32,0.4)' }}>
-                Enter an English name to enable export
-              </p>
-            )}
-
-            {canCopy && exportBlocks.length > 1 && (
-              <p className="text-xs font-sans leading-relaxed" style={{ color: 'rgba(16,24,32,0.5)' }}>
-                Paste each block into its own range. The pricing columns in between are
-                left untouched so their formulas keep working.
-              </p>
-            )}
-
-            {/* One button per run of app-owned columns */}
-            {exportBlocks.map((block, i) => (
-              <CopyButton
-                key={block.range}
-                onClick={() => handleCopyBlock(block, i)}
-                disabled={!canCopy}
-                copied={copiedBlock === i}
-                label={`Copy columns ${block.range}`}
-                copiedLabel={`Copied ${block.range} — paste into ${block.range.split('–')[0]}`}
-                icon={<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />}
-                primary={i === 0}
-              />
-            ))}
-
-            {/* Copy details string */}
-            <CopyButton
-              onClick={handleCopyDetails}
-              disabled={!canCopy}
-              copied={copiedDetails}
-              label="Copy Bundle Details"
-              copiedLabel="Copied details"
-              icon={<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />}
-            />
-
-            {copyError && (
-              <p className="text-xs font-semibold font-sans" style={{ color: '#b45309' }}>{copyError}</p>
-            )}
-          </div>
+          <ExportPanel
+            bundles={bundles}
+            products={products}
+            headers={headers}
+            activeId={bundle.id}
+            selectedMarket={selectedMarket}
+            markets={markets}
+            discounts={discounts}
+            onSelectBundle={onSelectBundle}
+          />
         </div>
       </div>
     </div>
@@ -826,13 +954,68 @@ function DragPreview({ product }) {
 
 // ─── Main BuilderView ─────────────────────────────────────────────────────────
 
-export default function BuilderView({ products, markets, discounts, selectedMarket, headers }) {
-  const [bundleItems, setBundleItems] = useState([])
+export default function BuilderView({ products, productMap, markets, discounts, selectedMarket, headers }) {
+  // A session holds several bundles; the canvas edits whichever one is active.
+  const [firstBundle] = useState(() => createBundle())
+  const [bundles, setBundles] = useState([firstBundle])
+  const [activeId, setActiveId] = useState(firstBundle.id)
   const [activeDragProduct, setActiveDragProduct] = useState(null)
+
+  const activeBundle = bundles.find(b => b.id === activeId) ?? bundles[0]
+
+  // Bundle items hold product snapshots. After a sheet refresh the parsed objects are
+  // new, so re-point each item at the refreshed product to pick up changed prices and
+  // statuses. Returns `prev` untouched when nothing moved, so this can't loop.
+  useEffect(() => {
+    if (!productMap) return
+    setBundles(prev => {
+      let changed = false
+      const next = prev.map(b => {
+        let itemsChanged = false
+        const items = b.items.map(i => {
+          const fresh = productMap[i.product.skuUk]
+          if (fresh && fresh !== i.product) { itemsChanged = true; return { ...i, product: fresh } }
+          return i
+        })
+        if (!itemsChanged) return b
+        changed = true
+        return { ...b, items }
+      })
+      return changed ? next : prev
+    })
+  }, [productMap])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   )
+
+  const patchBundle = useCallback((id, patch) => {
+    setBundles(prev => prev.map(b => (b.id === id ? { ...b, ...patch } : b)))
+  }, [])
+
+  const patchActive = useCallback((patch) => {
+    patchBundle(activeId, patch)
+  }, [patchBundle, activeId])
+
+  const addBundle = useCallback(() => {
+    const b = createBundle()
+    setBundles(prev => [...prev, b])
+    setActiveId(b.id)
+  }, [])
+
+  const removeBundle = useCallback((id) => {
+    const idx = bundles.findIndex(b => b.id === id)
+    const next = bundles.filter(b => b.id !== id)
+    if (!next.length) {
+      // Never leave the session with nothing to edit
+      const fresh = createBundle()
+      setBundles([fresh])
+      setActiveId(fresh.id)
+      return
+    }
+    setBundles(next)
+    if (id === activeId) setActiveId(next[Math.min(idx, next.length - 1)].id)
+  }, [bundles, activeId])
 
   const handleDragStart = useCallback(({ active }) => {
     const d = active.data.current
@@ -848,64 +1031,97 @@ export default function BuilderView({ products, markets, discounts, selectedMark
     const oType = over.data.current?.type
     const overIsCanvas = over.id === 'canvas' || oType === 'canvas'
 
-    // Picker → canvas: add product
+    // Picker → canvas: add product to the active bundle
     if (aType === 'picker' && overIsCanvas) {
       const product = active.data.current.product
-      setBundleItems(prev => [...prev, { instanceId: `item-${++instanceCounter}`, product }])
+      setBundles(prev => prev.map(b => b.id === activeId
+        ? { ...b, items: [...b.items, { instanceId: `item-${++instanceCounter}`, product }] }
+        : b))
       return
     }
 
-    // Canvas → canvas: reorder
+    // Canvas → canvas: reorder within the active bundle
     if (aType === 'canvas' && oType === 'canvas') {
-      setBundleItems(prev => {
-        const oldIdx = prev.findIndex(i => i.instanceId === active.id)
-        const newIdx = prev.findIndex(i => i.instanceId === over.id)
-        if (oldIdx < 0 || newIdx < 0 || oldIdx === newIdx) return prev
-        return arrayMove(prev, oldIdx, newIdx)
-      })
+      setBundles(prev => prev.map(b => {
+        if (b.id !== activeId) return b
+        const oldIdx = b.items.findIndex(i => i.instanceId === active.id)
+        const newIdx = b.items.findIndex(i => i.instanceId === over.id)
+        if (oldIdx < 0 || newIdx < 0 || oldIdx === newIdx) return b
+        return { ...b, items: arrayMove(b.items, oldIdx, newIdx) }
+      }))
     }
-  }, [])
+  }, [activeId])
+
+  // Emptying a bundle clears its names too, so the next thing built here can't
+  // inherit the previous product's name.
+  const clearedFields = { nameEn: '', nameEs: '', customSku: '', skuEdited: false }
 
   const handleRemove = useCallback((instanceId) => {
-    setBundleItems(prev => prev.filter(i => i.instanceId !== instanceId))
-  }, [])
+    setBundles(prev => prev.map(b => {
+      if (b.id !== activeId) return b
+      const items = b.items.filter(i => i.instanceId !== instanceId)
+      return items.length ? { ...b, items } : { ...b, items, ...clearedFields }
+    }))
+  }, [activeId])
+
+  const clearActive = useCallback(() => {
+    patchActive({ items: [], ...clearedFields })
+  }, [patchActive])
+
+  const readyCount = bundles.filter(b => isBundleReady(b, products, siblingsOf(b, bundles))).length
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="flex flex-col h-full overflow-hidden">
 
         {/* ── Top half: picker + canvas ── */}
-        <div className="flex min-h-0" style={{ flex: '0 0 52%' }}>
+        <div className="flex min-h-0" style={{ flex: '0 0 56%' }}>
           {/* Product picker */}
           <div className="w-52 shrink-0 overflow-hidden">
             <ProductPicker products={products} selectedMarket={selectedMarket} markets={markets} />
           </div>
 
           {/* Canvas */}
-          <div className="flex-1 flex flex-col p-4 gap-2 overflow-hidden">
+          <div className="flex-1 flex flex-col p-4 gap-2 overflow-hidden min-w-0">
+            {/* Bundle tabs */}
+            <BundleTabs
+              bundles={bundles}
+              activeId={activeBundle.id}
+              products={products}
+              onSelect={setActiveId}
+              onAdd={addBundle}
+              onRemove={removeBundle}
+            />
+
             <div className="flex items-center justify-between shrink-0">
               <h2 className="text-sm font-semibold font-sans" style={{ color: '#101820' }}>
                 Bundle Canvas
-                {bundleItems.length > 0 && (
+                {activeBundle.items.length > 0 && (
                   <span className="ml-2 text-xs font-normal font-sans" style={{ color: 'rgba(16,24,32,0.45)' }}>
-                    {bundleItems.length} item{bundleItems.length !== 1 ? 's' : ''}
+                    {activeBundle.items.length} item{activeBundle.items.length !== 1 ? 's' : ''}
                   </span>
                 )}
               </h2>
-              {bundleItems.length > 0 && (
-                <button
-                  onClick={() => setBundleItems([])}
-                  className="text-xs transition-colors font-sans"
-                  style={{ color: 'rgba(16,24,32,0.45)' }}
-                  onMouseEnter={e => { e.currentTarget.style.color = '#b45309' }}
-                  onMouseLeave={e => { e.currentTarget.style.color = 'rgba(16,24,32,0.45)' }}
-                >
-                  Clear all
-                </button>
-              )}
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-sans" style={{ color: 'rgba(16,24,32,0.4)' }}>
+                  {readyCount} of {bundles.length} ready
+                </span>
+                {activeBundle.items.length > 0 && (
+                  <button
+                    onClick={clearActive}
+                    className="text-xs transition-colors font-sans"
+                    style={{ color: 'rgba(16,24,32,0.45)' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#b45309' }}
+                    onMouseLeave={e => { e.currentTarget.style.color = 'rgba(16,24,32,0.45)' }}
+                  >
+                    Clear bundle
+                  </button>
+                )}
+              </div>
             </div>
+
             <HorizontalCanvas
-              items={bundleItems}
+              items={activeBundle.items}
               selectedMarket={selectedMarket}
               markets={markets}
               onRemove={handleRemove}
@@ -914,18 +1130,26 @@ export default function BuilderView({ products, markets, discounts, selectedMark
         </div>
 
         {/* ── Bottom half: bundle summary ── */}
-        <div className="min-h-0" style={{ flex: '0 0 48%', borderTop: '1px solid rgba(16,24,32,0.08)', backgroundColor: '#ffffff' }}>
+        <div className="min-h-0" style={{ flex: '0 0 44%', borderTop: '1px solid rgba(16,24,32,0.08)', backgroundColor: '#ffffff' }}>
           <div className="flex items-center px-4 py-2 shrink-0" style={{ borderBottom: '1px solid rgba(16,24,32,0.06)' }}>
-            <h2 className="text-sm font-semibold font-sans" style={{ color: '#101820' }}>Bundle Summary</h2>
+            <h2 className="text-sm font-semibold font-sans" style={{ color: '#101820' }}>
+              {activeBundle.nameEn.trim() || `Bundle ${bundles.findIndex(b => b.id === activeBundle.id) + 1}`}
+            </h2>
+            <span className="ml-2 text-xs font-sans" style={{ color: 'rgba(16,24,32,0.4)' }}>
+              · editing {bundles.findIndex(b => b.id === activeBundle.id) + 1} of {bundles.length}
+            </span>
           </div>
           <div className="overflow-hidden" style={{ height: 'calc(100% - 37px)' }}>
             <BundleSummary
-              items={bundleItems}
+              bundle={activeBundle}
+              bundles={bundles}
               markets={markets}
               discounts={discounts}
               selectedMarket={selectedMarket}
               products={products}
               headers={headers}
+              onChange={patchActive}
+              onSelectBundle={setActiveId}
             />
           </div>
         </div>

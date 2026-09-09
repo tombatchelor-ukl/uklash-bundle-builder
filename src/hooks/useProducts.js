@@ -30,7 +30,7 @@ export function useProducts(sheetUrl) {
             setHeaders(h)
             setLastFetched(new Date(parseInt(cachedTs, 10)))
             setLoading(false)
-            return
+            return true
           }
         }
       }
@@ -47,6 +47,7 @@ export function useProducts(sheetUrl) {
       setProductMap(pm)
       setHeaders(h)
       setLastFetched(new Date())
+      return true
     } catch (err) {
       const cached = localStorage.getItem(CACHE_KEY)
       if (cached) {
@@ -58,6 +59,7 @@ export function useProducts(sheetUrl) {
       } else {
         setError(`Failed to load products: ${err.message}`)
       }
+      return false
     } finally {
       setLoading(false)
     }
@@ -67,5 +69,7 @@ export function useProducts(sheetUrl) {
     if (sheetUrl) load()
   }, [sheetUrl, load])
 
+  // `refresh` resolves to true when the sheet was re-read successfully, so callers
+  // can show real confirmation rather than guessing.
   return { products, productMap, headers, loading, error, lastFetched, refresh: () => load(true) }
 }

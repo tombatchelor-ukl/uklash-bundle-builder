@@ -12,6 +12,10 @@
  *
  * For the current sheet this yields two blocks: A–K (names, SKUs, status, bundle
  * metadata) and Z–AD (the category flags), leaving L–Y untouched.
+ *
+ * Several bundles export together: each block carries one TSV line per bundle, in
+ * the same order across every block, so the rows line up when each block is pasted
+ * into its own range.
  */
 
 /** 0 → "A", 25 → "Z", 26 → "AA" */
@@ -33,15 +37,21 @@ function cell(value) {
 const normalise = (h) => (h || '').replace(/\s+/g, ' ').trim().toLowerCase()
 
 /**
- * @param headers   the sheet's actual header row (from the parsed CSV)
- * @param exportMap normalised header name → value. Any header absent from this map
- *                  is treated as not-ours and excluded from every block.
- * @returns [{ start, end, range, columns, tsv }] in left-to-right order
+ * @param headers    the sheet's actual header row (from the parsed CSV)
+ * @param exportMaps one map per bundle (a single map is accepted too) of
+ *                   normalised header name → value. Any header absent from every
+ *                   map is treated as not-ours and excluded from all blocks.
+ * @returns [{ start, end, range, columns, tsv, rowCount }] in left-to-right order
  */
-export function buildExportBlocks(headers, exportMap) {
-  const owned = headers.map(h =>
-    Object.prototype.hasOwnProperty.call(exportMap, normalise(h))
-  )
+export function buildExportBlocks(headers, exportMaps) {
+  const maps = Array.isArray(exportMaps) ? exportMaps : [exportMaps]
+  if (!maps.length) return []
+
+  // A column belongs to the app if any bundle supplies it. In practice every map
+  // has the same keys; the union just keeps this robust.
+  const ownedKeys = new Set()
+  maps.forEach(m => Object.keys(m).forEach(k => ownedKeys.add(normalise(k))))
+  const owned = headers.map(h => ownedKeys.has(normalise(h)))
 
   const blocks = []
   let i = 0
@@ -56,7 +66,10 @@ export function buildExportBlocks(headers, exportMap) {
       end,
       range: start === end ? colLetter(start) : `${colLetter(start)}–${colLetter(end)}`,
       columns,
-      tsv: columns.map(h => cell(exportMap[normalise(h)])).join('\t'),
+      rowCount: maps.length,
+      tsv: maps
+        .map(m => columns.map(h => cell(m[normalise(h)])).join('\t'))
+        .join('\n'),
     })
   }
   return blocks
