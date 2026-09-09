@@ -1,4 +1,5 @@
 import CategoryTag from './CategoryTag'
+import StatusPill from './StatusPill'
 import PriceTable from './PriceTable'
 import { formatPrice } from '../utils/pricing'
 import skuImages from '../data/skuImages'
@@ -18,6 +19,7 @@ export default function ProductDetail({ product, productMap, markets, selectedMa
   }
 
   const imgSrc = skuImages[product.skuUk]
+  const dimmed = product.isDiscontinued
 
   return (
     <div className="h-full overflow-y-auto p-8">
@@ -29,7 +31,7 @@ export default function ProductDetail({ product, productMap, markets, selectedMa
             src={imgSrc}
             alt={product.nameEn}
             className="w-full h-full object-contain"
-            style={{ maxHeight: '220px' }}
+            style={{ maxHeight: '220px', filter: dimmed ? 'grayscale(1)' : undefined, opacity: dimmed ? 0.7 : 1 }}
             loading="lazy"
           />
         </div>
@@ -38,15 +40,18 @@ export default function ProductDetail({ product, productMap, markets, selectedMa
       <div className="mb-7">
         <div className="flex items-start justify-between gap-4 mb-2">
           {/* NyghtSerif for product name */}
-          <h2 className="font-serif text-2xl leading-tight" style={{ color: '#101820' }}>
+          <h2 className="font-serif text-2xl leading-tight" style={{ color: dimmed ? 'rgba(16,24,32,0.55)' : '#101820' }}>
             {product.nameEn}
           </h2>
-          {product.isBundle && (
-            <span className="shrink-0 mt-1 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium uppercase tracking-wide"
-              style={{ background: '#101820', color: '#ffffff' }}>
-              Bundle
-            </span>
-          )}
+          <div className="flex shrink-0 items-center gap-1.5 mt-1">
+            <StatusPill status={product.status} />
+            {product.isBundle && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium uppercase tracking-wide"
+                style={{ background: '#101820', color: '#ffffff' }}>
+                Bundle
+              </span>
+            )}
+          </div>
         </div>
         {product.nameEs && product.nameEs !== product.nameEn && (
           <p className="text-sm italic mt-1" style={{ color: 'rgba(16,24,32,0.45)' }}>
@@ -91,6 +96,23 @@ export default function ProductDetail({ product, productMap, markets, selectedMa
         <SectionLabel>{product.isBundle ? 'Bundle RRP' : 'Market RRP'}</SectionLabel>
         <PriceTable markets={markets} prices={product.prices} selectedMarket={selectedMarket} />
       </div>
+
+      {/* Live selling price — read from the sheet's Current Price columns, shown only
+          where it differs from RRP. Never used in bundle maths. */}
+      {selectedMarket && product.currentPrices?.[selectedMarket] > 0
+        && product.currentPrices[selectedMarket] !== product.prices?.[selectedMarket] && (
+        <div className="mt-6">
+          <SectionLabel>Current Selling Price</SectionLabel>
+          <PriceTable markets={markets} prices={product.currentPrices} selectedMarket={selectedMarket} />
+        </div>
+      )}
+
+      {/* US ex-VAT is a reporting variant of the US price, not a bundling market. */}
+      {selectedMarket === 'us' && product.usExVatRrp > 0 && (
+        <p className="text-xs mt-3" style={{ color: 'rgba(16,24,32,0.45)' }}>
+          US ex-VAT RRP: <span className="font-medium" style={{ color: '#101820' }}>${product.usExVatRrp.toFixed(2)}</span>
+        </p>
+      )}
     </div>
   )
 }
@@ -129,6 +151,7 @@ function ComponentBreakdown({ componentSkus, productMap, markets, selectedMarket
     return acc
   }, {})
   const uniqueSkus = Object.keys(componentCounts)
+  const unresolved = uniqueSkus.filter(sku => !productMap[sku])
   const visibleMarkets = selectedMarket
     ? markets.filter(m => m.key === selectedMarket)
     : markets.slice(0, 2)
@@ -141,15 +164,25 @@ function ComponentBreakdown({ componentSkus, productMap, markets, selectedMarket
           const component = productMap[sku]
           const qty = componentCounts[sku]
           return (
-            <div key={sku} className="flex items-center justify-between px-4 py-3 gap-2 bg-white">
+            <div key={sku} className="flex items-center justify-between px-4 py-3 gap-2"
+              style={{ background: component ? '#ffffff' : '#fffbeb' }}>
               <div>
-                <div className="text-sm font-medium" style={{ color: '#101820' }}>
-                  {component?.nameEn || sku}
+                <div className="text-sm font-medium flex items-center gap-1.5 flex-wrap" style={{ color: '#101820' }}>
+                  <span>{component?.nameEn || sku}</span>
                   {qty > 1 && (
-                    <span className="ml-1.5 text-xs" style={{ color: 'rgba(16,24,32,0.4)' }}>
+                    <span className="text-xs" style={{ color: 'rgba(16,24,32,0.4)' }}>
                       ×{qty}
                     </span>
                   )}
+                  {component
+                    ? <StatusPill status={component.status} size="xs" />
+                    : (
+                      <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] uppercase tracking-wide font-semibold"
+                        style={{ background: '#fde68a', color: '#8a5a09' }}
+                        title="This SKU is listed as a component but has no row in the product sheet">
+                        Not in catalogue
+                      </span>
+                    )}
                 </div>
                 <div className="text-[10px] font-mono mt-0.5" style={{ color: 'rgba(16,24,32,0.35)' }}>
                   {sku}
@@ -172,6 +205,15 @@ function ComponentBreakdown({ componentSkus, productMap, markets, selectedMarket
           )
         })}
       </div>
+      {unresolved.length > 0 && (
+        <div className="px-4 py-2" style={{ background: '#fef3c7', borderTop: '1px solid #fde68a' }}>
+          <p className="text-[11px] font-medium" style={{ color: '#b45309' }}>
+            {unresolved.length} component SKU{unresolved.length !== 1 ? 's' : ''} not found in
+            the sheet, so {unresolved.length !== 1 ? 'their prices are' : 'its price is'} missing
+            from the breakdown above.
+          </p>
+        </div>
+      )}
       {/* Total row */}
       <div className="flex items-center justify-between px-4 py-3"
         style={{ background: 'rgba(16,24,32,0.03)', borderTop: '1px solid rgba(16,24,32,0.07)' }}>

@@ -30,18 +30,27 @@ export function sumPrices(products, marketKey) {
 }
 
 /**
- * Formats a number as a currency string using the market's symbol.
+ * Components with no price in a given market. A missing price contributes 0 to the
+ * total, which would otherwise read as a legitimate — but understated — figure.
+ */
+export function findMissingPrices(products, marketKey) {
+  return products.filter(p => !((p.prices?.[marketKey] ?? 0) > 0))
+}
+
+/**
+ * Formats a number as a currency string using the market's currency code.
+ * Uses `currency` (not the display label) so renaming a market in config.json
+ * can never change how its prices render.
  */
 export function formatPrice(value, market) {
   if (value === 0 || value === null || value === undefined) return '—'
+  if (!market) return value.toFixed(2)
   const formatted = value.toFixed(2)
-  switch (market.symbol) {
-    case '£': return `£${formatted}`
-    case '€': return `€${formatted}`
-    case '$': return `${market.label === 'Australia' ? 'A$' : '$'}${formatted}`
-    case '¥': return `¥${formatted}`
-    default:  return `${market.symbol}${formatted}`
+  const prefixByCurrency = {
+    GBP: '£', EUR: '€', USD: '$', CNY: '¥', AUD: 'A$', CAD: 'C$', NZD: 'NZ$', JPY: '¥',
   }
+  const prefix = prefixByCurrency[market.currency] ?? market.symbol ?? ''
+  return `${prefix}${formatted}`
 }
 
 /**
@@ -56,12 +65,15 @@ export function calcBundlePrices(items, markets, discounts) {
   return markets.map(market => {
     const total = sumPrices(products, market.key)
     const discounted = applyDiscount(total, rate)
+    const missing = findMissingPrices(products, market.key)
     return {
       market,
       total,
       discounted,
       rate,
       saving: total - discounted,
+      missing,                      // components with no price in this market
+      isComplete: missing.length === 0,
     }
   })
 }

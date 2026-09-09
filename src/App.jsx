@@ -75,18 +75,28 @@ function PasswordGate({ onUnlock }) {
 
 function AppContent() {
   const [config, setConfig] = useState(null)
+  const [configError, setConfigError] = useState(null)
   const [view, setView] = useState(VIEWS.BROWSE)
   const [selectedSku, setSelectedSku] = useState(null)
   const [selectedMarket, setSelectedMarket] = useState('uk')
 
+  // A failed config leaves useProducts with no sheet URL, so it never starts loading
+  // and never stops either. Surface the failure instead of spinning forever.
   useEffect(() => {
     fetch(`${import.meta.env.BASE_URL}config.json`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status} fetching config.json`)
+        return r.json()
+      })
       .then(cfg => {
+        if (!cfg?.sheetUrl) throw new Error('config.json is missing "sheetUrl"')
         setConfig(cfg)
         setSelectedMarket(cfg.markets?.[0]?.key ?? 'uk')
       })
-      .catch(console.error)
+      .catch(err => {
+        console.error(err)
+        setConfigError(err.message || String(err))
+      })
   }, [])
 
   const { products, productMap, headers, loading, error, lastFetched, refresh } =
@@ -169,7 +179,9 @@ function AppContent() {
       </header>
 
       {/* ── Main ────────────────────────────────────────── */}
-      {loading && !products.length ? (
+      {configError ? (
+        <ConfigErrorScreen message={configError} />
+      ) : loading && !products.length ? (
         <LoadingScreen />
       ) : (
         <div className="flex flex-1 overflow-hidden">
@@ -232,6 +244,29 @@ function TabButton({ active, onClick, children }) {
     >
       {children}
     </button>
+  )
+}
+
+function ConfigErrorScreen({ message }) {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-3 px-8 text-center">
+      <svg className="w-8 h-8" style={{ color: '#b45309' }} fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+      </svg>
+      <p className="text-sm font-semibold" style={{ color: '#101820' }}>Could not load app configuration</p>
+      <p className="text-xs font-mono max-w-md" style={{ color: '#b45309' }}>{message}</p>
+      <p className="text-xs max-w-md" style={{ color: 'rgba(16,24,32,0.45)' }}>
+        config.json could not be fetched or parsed, so there is no product sheet to read.
+        Reload to retry — if it persists, check that public/config.json deployed correctly.
+      </p>
+      <button
+        onClick={() => window.location.reload()}
+        className="mt-1 px-4 py-2 rounded-lg text-xs font-semibold"
+        style={{ background: '#101820', color: '#ffffff' }}
+      >
+        Reload
+      </button>
+    </div>
   )
 }
 

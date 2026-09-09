@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import CategoryTag from './CategoryTag'
+import StatusPill from './StatusPill'
 import { searchProducts } from '../utils/search'
 import skuImages from '../data/skuImages'
 
@@ -139,6 +140,7 @@ export default function ProductList({ products, selectedSku, onSelect }) {
 
 function ProductRow({ product, isSelected, onSelect }) {
   const imgSrc = skuImages[product.skuUk]
+  const dimmed = product.isDiscontinued
   return (
     <button
       onClick={() => onSelect(product.skuUk)}
@@ -156,7 +158,8 @@ function ProductRow({ product, isSelected, onSelect }) {
         <div className="shrink-0 w-9 h-9 rounded-md overflow-hidden"
           style={{ background: 'rgba(255,255,255,0.06)' }}>
           {imgSrc
-            ? <img src={imgSrc} alt="" className="w-full h-full object-contain" loading="lazy" style={{ background: '#f5f0ed' }} />
+            ? <img src={imgSrc} alt="" className="w-full h-full object-contain" loading="lazy"
+                style={{ background: '#f5f0ed', filter: dimmed ? 'grayscale(1)' : undefined, opacity: dimmed ? 0.6 : 1 }} />
             : <div className="w-full h-full flex items-center justify-center">
                 <svg className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.2)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -167,16 +170,22 @@ function ProductRow({ product, isSelected, onSelect }) {
         {/* Text */}
         <div className="min-w-0 flex-1">
           <div className="text-xs font-medium truncate leading-tight"
-            style={{ color: isSelected ? '#ffffff' : 'rgba(255,255,255,0.82)' }}>
+            style={{
+              color: dimmed
+                ? 'rgba(255,255,255,0.42)'
+                : isSelected ? '#ffffff' : 'rgba(255,255,255,0.82)',
+            }}>
             {product.nameEn}
           </div>
           <div className="text-[10px] font-mono mt-0.5"
-            style={{ color: 'rgba(255,255,255,0.28)' }}>
+            style={{ color: dimmed ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.28)' }}>
             {product.skuUk}
           </div>
+          {dimmed && <div className="mt-1"><StatusPill status={product.status} size="xs" /></div>}
         </div>
         {/* Tags */}
-        <div className="flex flex-wrap gap-1 justify-end shrink-0">
+        <div className="flex flex-wrap gap-1 justify-end shrink-0"
+          style={{ opacity: dimmed ? 0.45 : 1 }}>
           {product.categories.filter(c => c !== 'large' && c !== 'bundle').slice(0, 1).map(c => (
             <CategoryTag key={c} category={c} size="xs" />
           ))}
